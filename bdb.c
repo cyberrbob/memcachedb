@@ -11,17 +11,23 @@
  *  $Id: bdb.c 2008-01-22 17:27:13Z steve $
  */
 
+#include <db.h>
 #include "memcachedb.h"
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
+#ifndef WIN32
 #include <unistd.h>
+#endif
 #include <string.h>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <signal.h>
-#include <db.h>
+
+#ifdef WIN32
+#define mkdir(s,m) my_mkdir(s,m)
+#endif
 
 static void *bdb_chkpoint_thread __P((void *));
 static void *bdb_memp_trickle_thread __P((void *));
@@ -295,39 +301,42 @@ void bdb_db_open(void){
 }
 
 void start_chkpoint_thread(void){
+	int errno1;
     if (bdb_settings.chkpoint_val > 0){
         /* Start a checkpoint thread. */
-        if ((errno = pthread_create(
+        if ((errno1 = pthread_create(
             &chk_ptid, NULL, bdb_chkpoint_thread, (void *)env)) != 0) {
             fprintf(stderr,
                 "failed spawning checkpoint thread: %s\n",
-                strerror(errno));
+                strerror(errno1));
             exit(EXIT_FAILURE);
         }
     }
 }
 
 void start_memp_trickle_thread(void){
+	int errno1;
     if (bdb_settings.memp_trickle_val > 0){
         /* Start a memp_trickle thread. */
-        if ((errno = pthread_create(
+        if ((errno1 = pthread_create(
             &mtri_ptid, NULL, bdb_memp_trickle_thread, (void *)env)) != 0) {
             fprintf(stderr,
                 "failed spawning memp_trickle thread: %s\n",
-                strerror(errno));
+                strerror(errno1));
             exit(EXIT_FAILURE);
         }
     }
 }
 
 void start_dl_detect_thread(void){
+	int errno1;
     if (bdb_settings.dldetect_val > 0){
         /* Start a deadlock detecting thread. */
-        if ((errno = pthread_create(
+        if ((errno1 = pthread_create(
             &dld_ptid, NULL, bdb_dl_detect_thread, (void *)env)) != 0) {
             fprintf(stderr,
                 "failed spawning deadlock thread: %s\n",
-                strerror(errno));
+                strerror(errno1));
             exit(EXIT_FAILURE);
         }
     }
@@ -339,8 +348,14 @@ static void *bdb_chkpoint_thread(void *arg)
     int ret;
     dbenv = arg;
     if (settings.verbose > 1) {
+		u_long thread_id;
+#ifdef WIN32
+		thread_id = (u_long)pthread_self().p;
+#else
+		thread_id = (u_long)pthread_self();
+#endif
         dbenv->errx(dbenv, "checkpoint thread created: %lu, every %d seconds", 
-                           (u_long)pthread_self(), bdb_settings.chkpoint_val);
+                           (u_long)thread_id, bdb_settings.chkpoint_val);
     }
     for (;; sleep(bdb_settings.chkpoint_val)) {
         if ((ret = dbenv->txn_checkpoint(dbenv, 0, 0, 0)) != 0) {
@@ -357,8 +372,14 @@ static void *bdb_memp_trickle_thread(void *arg)
     int ret, nwrotep;
     dbenv = arg;
     if (settings.verbose > 1) {
+		u_long thread_id;
+#ifdef WIN32
+		thread_id = (u_long)pthread_self().p;
+#else
+		thread_id = (u_long)pthread_self();
+#endif
         dbenv->errx(dbenv, "memp_trickle thread created: %lu, every %d seconds, %d%% pages should be clean.", 
-                           (u_long)pthread_self(), bdb_settings.memp_trickle_val,
+                           (u_long)thread_id, bdb_settings.memp_trickle_val,
                            bdb_settings.memp_trickle_percent);
     }
     for (;; sleep(bdb_settings.memp_trickle_val)) {
@@ -376,8 +397,14 @@ static void *bdb_dl_detect_thread(void *arg)
     struct timeval t;
     dbenv = arg;
     if (settings.verbose > 1) {
+		u_long thread_id;
+#ifdef WIN32
+		thread_id = (u_long)pthread_self().p;
+#else
+		thread_id = (u_long)pthread_self();
+#endif
         dbenv->errx(dbenv, "deadlock detecting thread created: %lu, every %d millisecond",
-                           (u_long)pthread_self(), bdb_settings.dldetect_val);
+                           (u_long)thread_id, bdb_settings.dldetect_val);
     }
     while (!daemon_quit) {
         t.tv_sec = 0;

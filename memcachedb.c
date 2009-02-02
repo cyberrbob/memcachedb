@@ -19,11 +19,15 @@
 
 #include "memcachedb.h"
 #include <sys/stat.h>
+#ifndef WIN32
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <signal.h>
 #include <sys/resource.h>
 #include <sys/uio.h>
+#endif
+#include <signal.h>
+
+
 
 /* some POSIX systems need the following definition
  * to get mlockall flags out of sys/mman.h.  */
@@ -34,11 +38,18 @@
 #ifndef __need_IOV_MAX
 #define __need_IOV_MAX
 #endif
+#ifndef WIN32
 #include <pwd.h>
 #include <sys/mman.h>
-#include <fcntl.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
+#else
+#include "bsd_getopt.h"
+#endif
+
+#include <fcntl.h>
+
+
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -601,7 +612,7 @@ static int build_udp_headers(conn *c) {
         *hdr++ = c->msgused % 256;
         *hdr++ = 0;
         *hdr++ = 0;
-        assert((void *) hdr == (void *)c->msglist[i].msg_iov[0].iov_base + UDP_HEADER_SIZE);
+        assert((char FAR*) hdr == (char FAR*)c->msglist[i].msg_iov[0].iov_base + UDP_HEADER_SIZE);
     }
 
     return 0;
@@ -639,11 +650,13 @@ static void out_string(conn *c, const char *str) {
  */
 
 static void complete_nread(conn *c) {
+	item *it;
+	int comm;
+	int ret;
     assert(c != NULL);
 
-    item *it = c->item;
-    int comm = c->item_comm;
-    int ret;
+    it = c->item;
+    comm = c->item_comm;
 
     STATS_LOCK();
     stats.set_cmds++;
@@ -1690,6 +1703,7 @@ static int try_read_network(conn *c) {
     }
 
     while (1) {
+		int avail;
         if (c->rbytes >= c->rsize) {
             char *new_rbuf = realloc(c->rbuf, c->rsize * 2);
             if (!new_rbuf) {
@@ -1713,7 +1727,7 @@ static int try_read_network(conn *c) {
             c->request_addr_size = 0;
         }
 
-        int avail = c->rsize - c->rbytes;
+        avail = c->rsize - c->rbytes;
         res = read(c->sfd, c->rbuf + c->rbytes, avail);
         if (res > 0) {
             STATS_LOCK();
@@ -1743,9 +1757,10 @@ static int try_read_network(conn *c) {
 }
 
 static bool update_event(conn *c, const int new_flags) {
+	struct event_base *base;
     assert(c != NULL);
 
-    struct event_base *base = c->event.ev_base;
+    base = c->event.ev_base;
     if (c->ev_flags == new_flags)
         return true;
     if (event_del(&c->event) == -1) return false;
@@ -2257,6 +2272,7 @@ static int new_socket_unix(void) {
     return sfd;
 }
 
+#ifndef WIN32
 static int server_socket_unix(const char *path, int access_mask) {
     int sfd;
     struct linger ling = {0, 0};
@@ -2314,6 +2330,7 @@ static int server_socket_unix(const char *path, int access_mask) {
 
     return 0;
 }
+#endif
 
 static void usage(void) {
     printf(PACKAGE " " VERSION "\n");
@@ -2501,6 +2518,28 @@ static void remove_pidfile(const char *pid_file) {
 
 }
 
+void run_server()
+{
+	/* enter the loop */
+	event_loop(0);
+}
+
+void stop_server()
+{
+	/* exit the loop */
+	event_loopexit(NULL);
+}
+void pause_server()
+{
+	/* not implemented yet */
+}
+
+void continue_server()
+{
+	/* not implemented yet */
+}
+
+
 /* for safely exit, make sure to do checkpoint*/
 static void sig_handler(const int sig)
 {
@@ -2533,9 +2572,14 @@ int main (int argc, char **argv) {
     int maxcore = 0;
     char *username = NULL;
     char *pid_file = NULL;
+
+#ifndef WIN32
     struct passwd *pw;
     struct sigaction sa;
     struct rlimit rlim;
+#else
+    WSADATA wsaData;
+#endif
     /* listening socket */
     static int *l_socket = NULL;
 
@@ -2545,6 +2589,7 @@ int main (int argc, char **argv) {
 
     char *portstr = NULL;
 
+#ifndef WIN32
     /* register signal callback */
     if (signal(SIGTERM, sig_handler) == SIG_ERR)
         fprintf(stderr, "can not catch SIGTERM\n");
@@ -2552,6 +2597,12 @@ int main (int argc, char **argv) {
         fprintf(stderr, "can not catch SIGQUIT\n");
     if (signal(SIGINT,  sig_handler) == SIG_ERR)
         fprintf(stderr, "can not catch SIGINT\n");
+#else
+	if(WSAStartup(MAKEWORD(2,0), &wsaData) != 0) {
+		fprintf(stderr, "Socket Initialization Error. Program  aborted\n");
+		return;
+	}
+#endif
 
     /* init settings */
     settings_init();
@@ -2597,6 +2648,17 @@ int main (int argc, char **argv) {
             break;
         case 'd':
             daemonize = true;
+#ifdef WIN32
+			if(!optarg || !strcmpi(optarg, "runservice")) daemonize = 1;
+			else if(!strcmpi(optarg, "start")) daemonize = 2;
+			else if(!strcmpi(optarg, "restart")) daemonize = 3;
+			else if(!strcmpi(optarg, "stop")) daemonize = 4;
+			else if(!strcmpi(optarg, "shutdown")) daemonize = 5;
+			else if(!strcmpi(optarg, "install")) daemonize = 6;
+			else if(!strcmpi(optarg, "uninstall")) daemonize = 7;
+			else fprintf(stderr, "Illegal argument: \"%s\"\n", optarg);
+#endif /* WIN32 */
+
             break;
         case 'r':
             maxcore = 1;
@@ -2717,6 +2779,7 @@ int main (int argc, char **argv) {
         }
     }
 
+#ifndef WIN32
     if (maxcore != 0) {
         struct rlimit rlim_new;
         /*
@@ -2762,7 +2825,9 @@ int main (int argc, char **argv) {
             exit(EXIT_FAILURE);
         }
     }
+#endif /* !WIN32 */
 
+#ifndef WIN32
     /* daemonize if requested */
     /* if we want to ensure our ability to dump core, don't chdir to / */
     if (daemonize) {
@@ -2773,7 +2838,43 @@ int main (int argc, char **argv) {
             return 1;
         }
     }
+#else
+	switch(daemonize) {
+		case 2:
+			if(!ServiceStart()) {
+				fprintf(stderr, "failed to start service\n");
+				return 1;
+			}
+			exit(0);
+		case 3:
+			if(!ServiceRestart()) {
+				fprintf(stderr, "failed to restart service\n");
+				return 1;
+			}
+			exit(0);
+		case 4:
+		case 5:
+			if(!ServiceStop()) {
+				fprintf(stderr, "failed to stop service\n");
+				return 1;
+			}
+			exit(0);
+		case 6:
+			if(!ServiceInstall()) {
+				fprintf(stderr, "failed to install service or service already installed\n");
+				return 1;
+			}
+			exit(0);
+		case 7:
+			if(!ServiceUninstall()) {
+				fprintf(stderr, "failed to uninstall service or service not installed\n");
+				return 1;
+			}
+			exit(0);
+	}
+#endif
 
+#ifndef WIN32
     /* lose root privileges if we have them */
     if (getuid() == 0 || geteuid() == 0) {
         if (username == 0 || *username == '\0') {
@@ -2789,6 +2890,7 @@ int main (int argc, char **argv) {
             return 1;
         }
     }
+#endif
 
     /* initialize main thread libevent instance */
     main_base = event_init();
@@ -2798,6 +2900,7 @@ int main (int argc, char **argv) {
     stats_init();
     conn_init();
 
+#ifndef WIN32
     /*
      * ignore SIGPIPE signals; we can use errno==EPIPE if we
      * need that information
@@ -2809,13 +2912,21 @@ int main (int argc, char **argv) {
         perror("failed to ignore SIGPIPE; sigaction");
         exit(EXIT_FAILURE);
     }
+#endif 
     /* start up worker threads if MT mode */
     thread_init(settings.num_threads, main_base);
     /* save the PID in if we're a daemon, do this after thread_init due to
        a file descriptor handling bug somewhere in libevent */
     if (daemonize)
         save_pid(getpid(), pid_file);
+#ifdef WIN32
+	if (daemonize) {
+		ServiceSetFunc(run_server, pause_server, continue_server, stop_server);
+		ServiceRun();
+	}
+#endif /* WIN32 */
 
+#ifndef WIN32
     /* create unix mode sockets after dropping privileges */
     if (settings.socketpath != NULL) {
         if (server_socket_unix(settings.socketpath,settings.access)) {
@@ -2823,6 +2934,7 @@ int main (int argc, char **argv) {
           exit(EXIT_FAILURE);
         }
     }
+#endif
 
     /* create the listening socket, bind it, and init */
     if (settings.socketpath == NULL) {

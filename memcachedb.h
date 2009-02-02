@@ -22,11 +22,17 @@
 #endif
 
 #include <sys/types.h>
+#ifdef WIN32
+#include "win32.h"
+#else
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
-#include <event.h>
 #include <netdb.h>
+#endif
+
+#include <event.h>
+
 #include <db.h>
 
 #define DATA_BUFFER_SIZE 2048
@@ -59,7 +65,11 @@
 
 /* Default path for a database, and its env home */
 #define DBFILE "data.db"
+#ifndef WIN32
 #define DBHOME "/data1/memcachedb"
+#else
+#define DBHOME "./data1/"
+#endif
 
 #define BDB_EID_SELF -3
 

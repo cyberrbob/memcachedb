@@ -21,7 +21,9 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
+#ifndef WIN32
 #include <unistd.h>
+#endif
 #include <string.h>
 #include <pthread.h>
 #include <sys/stat.h>
@@ -78,11 +80,12 @@ int do_item_add_to_freelist(item *it) {
         freeitem[freeitemcurr++] = it;
         return 0;
     } else {
+		item **new_freeitem;
         if (freeitemtotal >= MAX_ITEM_FREELIST_LENGTH){
             return 1;
         }
         /* try to enlarge free item buffer array */
-        item **new_freeitem = (item **)realloc(freeitem, sizeof(item *) * freeitemtotal * 2);
+        new_freeitem = (item **)realloc(freeitem, sizeof(item *) * freeitemtotal * 2);
         if (new_freeitem) {
             freeitemtotal *= 2;
             freeitem = new_freeitem;
