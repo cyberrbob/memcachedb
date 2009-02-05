@@ -411,7 +411,11 @@ static void *bdb_dl_detect_thread(void *arg)
         t.tv_usec = bdb_settings.dldetect_val;
         (void)dbenv->lock_detect(dbenv, 0, DB_LOCK_YOUNGEST, NULL);
         /* select is a more accurate sleep timer */
+#ifdef WIN32
+		Sleep(bdb_settings.dldetect_val/1000);
+#else
         (void)select(0, NULL, NULL, NULL, &t);
+#endif
     }
     return (NULL);
 }
