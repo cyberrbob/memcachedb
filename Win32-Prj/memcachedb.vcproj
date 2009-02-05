@@ -137,8 +137,8 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				InlineFunctionExpansion="1"
-				AdditionalIncludeDirectories=""
-				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_DEPRECATE "
+				AdditionalIncludeDirectories="&quot;C:\Program Files\Oracle\Berkeley DB 4.7.25\include&quot;;../../libevent.git;&quot;../Win32-Code&quot;;../../pthreads/include;../compat"
+				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;HAVE_CONFIG_H"
 				StringPooling="true"
 				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
@@ -162,11 +162,11 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="libevent.lib ws2_32.lib"
+				AdditionalDependencies="libevent.lib ws2_32.lib libdb47.lib pthreadVC2.lib"
 				OutputFile=".\Release/memcachedb.exe"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
-				AdditionalLibraryDirectories=""
+				AdditionalLibraryDirectories="&quot;C:\Program Files\Oracle\Berkeley DB 4.7.25\lib\&quot;;&quot;../../libevent.git/WIN32-Prj/Release&quot;;../../pthreads/lib"
 				IgnoreDefaultLibraryNames=""
 				ProgramDatabaseFile=".\Release/memcachedb.pdb"
 				SubSystem="1"
@@ -216,11 +216,11 @@
 				>
 			</File>
 			<File
-				RelativePath=".\memcachedb.rc"
+				RelativePath="..\memcachedb.c"
 				>
 			</File>
 			<File
-				RelativePath="..\memcachedb.c"
+				RelativePath=".\memcachedb.rc"
 				>
 			</File>
 			<File

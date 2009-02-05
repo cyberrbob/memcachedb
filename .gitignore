@@ -1,2 +1,7 @@
 Win32-Prj/Debug/*
-memcachedb.ncb
+Win32-Prj/Release/*
+Win32-Prj/data1/*
+memcachedb.ncb\
+*.ncb
+*.suo
+*.vcproj.*
