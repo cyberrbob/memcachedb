@@ -140,7 +140,7 @@
 				AdditionalIncludeDirectories="&quot;C:\Program Files\Oracle\Berkeley DB 4.7.25\include&quot;;../../libevent.git;&quot;../Win32-Code&quot;;../../pthreads/include;../compat"
 				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;HAVE_CONFIG_H"
 				StringPooling="true"
-				RuntimeLibrary="0"
+				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				PrecompiledHeaderFile=".\Release/memcachedb.pch"
 				AssemblerListingLocation=".\Release/"
