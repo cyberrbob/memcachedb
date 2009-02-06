@@ -45,6 +45,9 @@
 #include <arpa/inet.h>
 #else
 #include "bsd_getopt.h"
+#include <process.h>
+#include "config.h"
+#include "ntservice.h"
 #endif
 
 #include <fcntl.h>
@@ -2340,6 +2343,11 @@ static void usage(void) {
            "-a <mask>     access mask for unix socket, in octal (default 0700)\n"
            "-l <ip_addr>  interface to listen on, default is INDRR_ANY\n"
            "-d            run as a daemon\n"
+		   "-d start          tell memcached to start\n"
+		   "-d restart        tell running memcached to do a graceful restart\n"
+		   "-d stop|shutdown  tell running memcached to shutdown\n"
+		   "-d install        install memcached service\n"
+		   "-d uninstall      uninstall memcached service\n"
            "-r            maximize core file limit\n"
            "-u <username> assume identity of <username> (only when run as root)\n"
            "-c <num>      max simultaneous connections, default is 4096\n"
@@ -2521,13 +2529,29 @@ static void remove_pidfile(const char *pid_file) {
 void run_server()
 {
 	/* enter the loop */
-	event_loop(0);
+	start_chkpoint_thread();
+	start_memp_trickle_thread();
+	start_dl_detect_thread();
+
+	/* enter the event loop */
+	event_base_loop(main_base, 0);
 }
 
 void stop_server()
 {
-	/* exit the loop */
-	event_loopexit(NULL);
+	int ret;
+
+	ret = event_base_loopexit(main_base, 0);
+	if (ret == 0)
+		fprintf(stderr, "done.\n");
+	else
+		fprintf(stderr, "error.\n");
+	daemon_quit = 1;
+	sleep(2);
+	bdb_db_close();
+	bdb_env_close();
+	exit(0);
+
 }
 void pause_server()
 {
@@ -2544,7 +2568,12 @@ void continue_server()
 static void sig_handler(const int sig)
 {
     int ret;
+#ifdef WIN32
+	if (sig != CTRL_C_EVENT && sig !=  CTRL_CLOSE_EVENT && sig != CTRL_BREAK_EVENT
+		&& sig != CTRL_LOGOFF_EVENT && sig != CTRL_SHUTDOWN_EVENT) {
+#else
     if (sig != SIGTERM && sig != SIGQUIT && sig != SIGINT) {
+#endif
         return;
     }
     if (daemon_quit == 1){
@@ -2598,11 +2627,12 @@ int main (int argc, char **argv) {
     if (signal(SIGINT,  sig_handler) == SIG_ERR)
         fprintf(stderr, "can not catch SIGINT\n");
 #else
+	SetConsoleCtrlHandler( (PHANDLER_ROUTINE) sig_handler, TRUE );
 	if(WSAStartup(MAKEWORD(2,0), &wsaData) != 0) {
 		fprintf(stderr, "Socket Initialization Error. Program  aborted\n");
 		return;
 	}
-#endif
+#endif	
 
     /* init settings */
     settings_init();
@@ -2615,7 +2645,11 @@ int main (int argc, char **argv) {
     setbuf(stderr, NULL);
 
     /* process arguments */
+#ifndef WIN32
     while ((c = getopt(argc, argv, "a:U:p:s:c:hivl:dru:P:t:b:f:H:B:m:A:L:C:T:e:D:NXMSR:O:n:")) != -1) {
+#else
+	while ((c = getopt(argc, argv, "a:U:p:s:c:hivl:d:ru:P:t:b:f:H:B:m:A:L:C:T:e:D:NXMSR:O:n:")) != -1) {
+#endif
         switch (c) {
         case 'a':
             /* access for unix domain socket, as octal mask (like chmod)*/
@@ -2919,13 +2953,6 @@ int main (int argc, char **argv) {
        a file descriptor handling bug somewhere in libevent */
     if (daemonize)
         save_pid(getpid(), pid_file);
-#ifdef WIN32
-	if (daemonize) {
-		ServiceSetFunc(run_server, pause_server, continue_server, stop_server);
-		ServiceRun();
-	}
-#endif /* WIN32 */
-
 #ifndef WIN32
     /* create unix mode sockets after dropping privileges */
     if (settings.socketpath != NULL) {
@@ -2964,29 +2991,40 @@ int main (int argc, char **argv) {
     bdb_db_open();
 
     /* start checkpoint and deadlock detect thread */
-    start_chkpoint_thread();
-    start_memp_trickle_thread();
-    start_dl_detect_thread();
+#ifdef WIN32
+	if (daemonize) {
+		ServiceSetFunc(run_server, pause_server, continue_server, stop_server);
+		ServiceRun();
 
-    /* enter the event loop */
-    event_base_loop(main_base, 0);
-    
-    /* cleanup bdb staff */
-    fprintf(stderr, "try to clean up bdb resource...\n");
-    bdb_chkpoint();
-    bdb_db_close();
-    bdb_env_close();
-    
-    /* remove the PID file if we're a daemon */
-    if (daemonize)
-        remove_pidfile(pid_file);
-    /* Clean up strdup() call for bind() address */
-    if (settings.inter)
-      free(settings.inter);
-    if (l_socket)
-      free(l_socket);
-    if (u_socket)
-      free(u_socket);
+	}
+	else
+#endif /* WIN32 */
+	{
+		start_chkpoint_thread();
+		start_memp_trickle_thread();
+		start_dl_detect_thread();
+
+		/* enter the event loop */
+		event_base_loop(main_base, 0);
+
+		/* cleanup bdb staff */
+		fprintf(stderr, "try to clean up bdb resource...\n");
+		bdb_chkpoint();
+		bdb_db_close();
+		bdb_env_close();
+
+	}
+	/* remove the PID file if we're a daemon */
+	if (daemonize)
+		remove_pidfile(pid_file);
+
+	/* Clean up strdup() call for bind() address */
+	if (settings.inter)
+		free(settings.inter);
+	if (l_socket)
+		free(l_socket);
+	if (u_socket)
+		free(u_socket);
 
     return 0;
 }

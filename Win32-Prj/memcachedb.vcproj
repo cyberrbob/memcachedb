@@ -47,7 +47,7 @@
 				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;HAVE_CONFIG_H"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
-				RuntimeLibrary="0"
+				RuntimeLibrary="3"
 				PrecompiledHeaderFile=".\Debug/memcachedb.pch"
 				AssemblerListingLocation=".\Debug/"
 				ObjectFile=".\Debug/"
